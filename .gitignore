@@ -49,9 +49,9 @@ ENV/
 logs/
 *.log
 
-# Data
-data/
-datasets/
+# Data (only root-level data directory, not src/data/)
+/data/
+/datasets/
 *.wav
 *.mp3
 *.flac
