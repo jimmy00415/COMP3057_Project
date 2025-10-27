@@ -289,14 +289,12 @@ class BatchInference:
             
             audio_arrays.append(waveform.numpy())
         
-        # Prepare batch
+        # Prepare batch - pad to Whisper's expected mel feature length
         input_features = self.processor(
             audio_arrays,
             sampling_rate=16000,
             return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=30 * 16000  # 30 seconds max
+            padding="longest"
         ).input_features.to(self.device)
         
         # Generate transcriptions
