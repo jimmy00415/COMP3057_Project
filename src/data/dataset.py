@@ -36,8 +36,14 @@ class WhisperDataset(Dataset):
         # Extract audio
         audio = item[self.audio_column]
         if isinstance(audio, dict):
-            waveform = torch.tensor(audio["array"])
-            sr = audio["sampling_rate"]
+            # Handle non-decoded audio (path-based)
+            if "path" in audio and "array" not in audio:
+                import soundfile as sf
+                waveform, sr = sf.read(audio["path"])
+                waveform = torch.tensor(waveform)
+            else:
+                waveform = torch.tensor(audio["array"])
+                sr = audio.get("sampling_rate", 16000)
         else:
             waveform = torch.tensor(audio)
             sr = 16000
