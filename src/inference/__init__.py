@@ -1,6 +1,8 @@
 """Inference package."""
 
-from .streaming import (
+from __future__ import absolute_import
+
+from src.inference.streaming import (
     AudioBuffer,
     StreamingASR,
     BatchInference

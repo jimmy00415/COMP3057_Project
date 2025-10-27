@@ -1,6 +1,8 @@
 """Models package."""
 
-from .whisper_model import (
+from __future__ import absolute_import
+
+from src.models.whisper_model import (
     WhisperModelManager,
     load_pretrained_model,
     compare_models

@@ -1,6 +1,8 @@
 """Utilities package."""
 
-from .config import (
+from __future__ import absolute_import
+
+from src.utils.config import (
     load_config,
     set_seed,
     setup_logging,
@@ -12,7 +14,7 @@ from .config import (
     ExperimentLogger
 )
 
-from .versioning import (
+from src.utils.versioning import (
     DataVersionManager,
     ModelRegistry
 )
