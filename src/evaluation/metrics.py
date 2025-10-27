@@ -27,7 +27,7 @@ class MetricsCalculator:
             return 0.0
         
         preds, refs = zip(*valid_pairs)
-        return wer(refs, preds)
+        return wer(list(refs), list(preds))
     
     def compute_cer(self, predictions: List[str], references: List[str]) -> float:
         """Compute Character Error Rate."""
@@ -37,7 +37,7 @@ class MetricsCalculator:
             return 0.0
         
         preds, refs = zip(*valid_pairs)
-        return cer(refs, preds)
+        return cer(list(refs), list(preds))
     
     def compute_all_metrics(self, predictions: List[str], references: List[str]) -> Dict[str, float]:
         """Compute all metrics."""
