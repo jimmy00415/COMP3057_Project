@@ -40,21 +40,12 @@ COMP3057_Project/
 
 ## 🚀 Quick Start (Google Colab)
 
-1. **Push to GitHub**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit: Real-time ASR project"
-   git remote add origin https://github.com/YOUR_USERNAME/COMP3057_Project.git
-   git push -u origin main
-   ```
-
-2. **Setup in Colab**
+1. **Setup in Colab**
    - Open Google Colab
    - Enable GPU: Runtime → Change runtime type → GPU (T4 recommended)
    - Run setup:
    ```python
-   !git clone https://github.com/YOUR_USERNAME/COMP3057_Project.git
+   !git clone https://github.com/jimmy00415/COMP3057_Project.git
    %cd COMP3057_Project
    !pip install -r requirements.txt
    ```
@@ -68,7 +59,7 @@ COMP3057_Project/
 
 ```bash
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/COMP3057_Project.git
+git clone https://github.com/jimmy00415/COMP3057_Project.git
 cd COMP3057_Project
 
 # Install dependencies
