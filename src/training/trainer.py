@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LinearLR, SequentialLR, ConstantLR
+from torch.cuda.amp import autocast, GradScaler
 from transformers import get_linear_schedule_with_warmup
 from tqdm.auto import tqdm
 from typing import Dict, Optional
@@ -38,6 +39,12 @@ class WhisperTrainer:
         self.global_step = 0
         self.best_val_loss = float('inf')
         self.patience_counter = 0
+        
+        # Mixed precision training
+        self.use_amp = config['training'].get('fp16', False) and torch.cuda.is_available()
+        self.scaler = GradScaler() if self.use_amp else None
+        if self.use_amp:
+            logger.info("Mixed precision training (FP16) enabled")
         
         # Setup optimizer and scheduler
         self._setup_optimizer()
@@ -76,46 +83,67 @@ class WhisperTrainer:
         total_loss = 0.0
         num_batches = 0
         
+        # Initialize gradients before first backward
+        self.optimizer.zero_grad()
+        
         progress_bar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
+        gradient_accumulation_steps = self.config['training'].get('gradient_accumulation_steps', 1)
         
         for batch_idx, batch in enumerate(progress_bar):
             # Move batch to device
             input_features = batch["input_features"].to(self.device)
             labels = batch["labels"].to(self.device)
             
-            # Forward pass
-            outputs = self.model(input_features=input_features, labels=labels)
-            loss = outputs.loss
+            # Forward pass with automatic mixed precision
+            with autocast(enabled=self.use_amp):
+                outputs = self.model(input_features=input_features, labels=labels)
+                loss = outputs.loss
+                
+                # Scale loss for gradient accumulation
+                scaled_loss = loss / gradient_accumulation_steps
             
-            # Backward pass with gradient accumulation
-            loss = loss / self.config['training'].get('gradient_accumulation_steps', 1)
-            loss.backward()
+            # Backward pass
+            if self.use_amp:
+                self.scaler.scale(scaled_loss).backward()
+            else:
+                scaled_loss.backward()
             
-            # Gradient clipping
-            if self.config['training'].get('max_grad_norm'):
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(),
-                    self.config['training']['max_grad_norm']
-                )
+            # Track metrics (detach to avoid keeping graph)
+            total_loss += loss.detach().item()
             
-            # Optimizer step
-            if (batch_idx + 1) % self.config['training'].get('gradient_accumulation_steps', 1) == 0:
-                self.optimizer.step()
+            # Gradient clipping and optimizer step
+            if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                # Unscale gradients for clipping (if using AMP)
+                if self.use_amp:
+                    self.scaler.unscale_(self.optimizer)
+                
+                # Gradient clipping
+                if self.config['training'].get('max_grad_norm'):
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(),
+                        self.config['training']['max_grad_norm']
+                    )
+                
+                # Optimizer step
+                if self.use_amp:
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    self.optimizer.step()
+                
                 self.scheduler.step()
                 self.optimizer.zero_grad()
                 self.global_step += 1
             
-            # Track metrics
-            total_loss += loss.item() * self.config['training'].get('gradient_accumulation_steps', 1)
             num_batches += 1
             
-            # Update progress bar
-            progress_bar.set_postfix({'loss': loss.item()})
+            # Update progress bar (use detached loss)
+            progress_bar.set_postfix({'loss': scaled_loss.detach().item()})
             
             # Log to experiment tracker
             if self.experiment_logger and self.global_step % 10 == 0:
                 self.experiment_logger.log_metrics({
-                    'train/loss': loss.item(),
+                    'train/loss': loss.detach().item(),
                     'train/learning_rate': self.scheduler.get_last_lr()[0]
                 }, step=self.global_step)
         
