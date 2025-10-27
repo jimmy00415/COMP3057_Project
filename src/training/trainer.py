@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LinearLR, SequentialLR, ConstantLR
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast
+from torch.cuda.amp import GradScaler
 from transformers import get_linear_schedule_with_warmup
 from tqdm.auto import tqdm
 from typing import Dict, Optional
@@ -95,12 +96,12 @@ class WhisperTrainer:
             labels = batch["labels"].to(self.device)
             
             # Forward pass with automatic mixed precision
-            with autocast(enabled=self.use_amp):
+            with autocast('cuda', enabled=self.use_amp):
                 outputs = self.model(input_features=input_features, labels=labels)
                 loss = outputs.loss
-                
-                # Scale loss for gradient accumulation
-                scaled_loss = loss / gradient_accumulation_steps
+            
+            # Scale loss for gradient accumulation (outside autocast)
+            scaled_loss = loss / gradient_accumulation_steps
             
             # Backward pass
             if self.use_amp:
