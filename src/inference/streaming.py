@@ -294,7 +294,9 @@ class BatchInference:
             audio_arrays,
             sampling_rate=16000,
             return_tensors="pt",
-            padding=True
+            padding=True,
+            truncation=True,
+            max_length=30 * 16000  # 30 seconds max
         ).input_features.to(self.device)
         
         # Generate transcriptions
