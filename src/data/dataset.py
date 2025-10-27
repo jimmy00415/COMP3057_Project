@@ -33,20 +33,34 @@ class WhisperDataset(Dataset):
     def __getitem__(self, idx):
         item = self.dataset[idx]
         
-        # Extract audio
+        # Extract audio - handles both decoded and path-based audio
         audio = item[self.audio_column]
+        
         if isinstance(audio, dict):
-            # Handle non-decoded audio (path-based)
-            if "path" in audio and "array" not in audio:
+            if "array" in audio:
+                # Already decoded
+                waveform = torch.tensor(audio["array"], dtype=torch.float32)
+                sr = audio.get("sampling_rate", 16000)
+            elif "path" in audio:
+                # Load from path
                 import soundfile as sf
                 waveform, sr = sf.read(audio["path"])
-                waveform = torch.tensor(waveform)
+                waveform = torch.tensor(waveform, dtype=torch.float32)
+            elif "bytes" in audio:
+                # Load from bytes
+                import soundfile as sf
+                import io
+                waveform, sr = sf.read(io.BytesIO(audio["bytes"]))
+                waveform = torch.tensor(waveform, dtype=torch.float32)
             else:
-                waveform = torch.tensor(audio["array"])
-                sr = audio.get("sampling_rate", 16000)
+                raise ValueError(f"Audio format not supported: {audio.keys()}")
         else:
-            waveform = torch.tensor(audio)
+            waveform = torch.tensor(audio, dtype=torch.float32)
             sr = 16000
+        
+        # Ensure mono
+        if len(waveform.shape) > 1:
+            waveform = waveform.mean(dim=-1)
         
         # Apply augmentation during training
         if self.augmenter is not None:
