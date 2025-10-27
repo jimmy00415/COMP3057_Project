@@ -95,22 +95,26 @@ class WhisperTrainer:
             input_features = batch["input_features"].to(self.device)
             labels = batch["labels"].to(self.device)
             
+            # Context manager for gradient checkpointing compatibility
+            is_accumulation_step = (batch_idx + 1) % gradient_accumulation_steps != 0
+            
             # Forward pass with automatic mixed precision
             with autocast(device_type='cuda', enabled=self.use_amp):
                 outputs = self.model(input_features=input_features, labels=labels)
                 loss = outputs.loss / gradient_accumulation_steps
             
-            # Backward pass
+            # Backward pass - detach loss from graph immediately after backward
             if self.use_amp:
                 self.scaler.scale(loss).backward()
             else:
                 loss.backward()
             
-            # Track metrics with original unscaled loss
-            total_loss += (loss.detach().item() * gradient_accumulation_steps)
+            # Track metrics - store loss value before potential graph cleanup
+            loss_value = loss.detach().item() * gradient_accumulation_steps
+            total_loss += loss_value
             
             # Gradient clipping and optimizer step
-            if (batch_idx + 1) % gradient_accumulation_steps == 0:
+            if not is_accumulation_step:
                 # Unscale gradients for clipping (if using AMP)
                 if self.use_amp:
                     self.scaler.unscale_(self.optimizer)
@@ -135,13 +139,13 @@ class WhisperTrainer:
             
             num_batches += 1
             
-            # Update progress bar (use detached loss)
-            progress_bar.set_postfix({'loss': loss.detach().item()})
+            # Update progress bar
+            progress_bar.set_postfix({'loss': loss_value / gradient_accumulation_steps})
             
             # Log to experiment tracker
             if self.experiment_logger and self.global_step % 10 == 0:
                 self.experiment_logger.log_metrics({
-                    'train/loss': loss.detach().item(),
+                    'train/loss': loss_value,
                     'train/learning_rate': self.scheduler.get_last_lr()[0]
                 }, step=self.global_step)
         

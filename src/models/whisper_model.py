@@ -103,11 +103,13 @@ class WhisperModelManager:
         elif self.config['model'].get('freeze_layers', 0) > 0:
             self.freeze_layers(self.config['model']['freeze_layers'])
         
-        # Enable gradient checkpointing for memory efficiency
+        # Disable cache for training
         self.model.config.use_cache = False
-        if hasattr(self.model, 'gradient_checkpointing_enable'):
-            self.model.gradient_checkpointing_enable()
-            logger.info("Gradient checkpointing enabled")
+        
+        # Gradient checkpointing disabled - causes issues with AMP + gradient accumulation
+        # if hasattr(self.model, 'gradient_checkpointing_enable'):
+        #     self.model.gradient_checkpointing_enable()
+        #     logger.info("Gradient checkpointing enabled")
         
         return self.model
     
