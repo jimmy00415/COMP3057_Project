@@ -96,11 +96,9 @@ class WhisperTrainer:
             labels = batch["labels"].to(self.device)
             
             # Forward pass with automatic mixed precision
-            with autocast('cuda', enabled=self.use_amp):
+            with autocast(device_type='cuda', enabled=self.use_amp):
                 outputs = self.model(input_features=input_features, labels=labels)
-                loss = outputs.loss
-                # Scale loss for gradient accumulation inside autocast
-                loss = loss / gradient_accumulation_steps
+                loss = outputs.loss / gradient_accumulation_steps
             
             # Backward pass
             if self.use_amp:
