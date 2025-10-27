@@ -38,8 +38,14 @@ class WhisperDataset(Dataset):
         
         if isinstance(audio, dict):
             if "array" in audio:
-                # Already decoded
-                waveform = torch.tensor(audio["array"], dtype=torch.float32)
+                # Already decoded - could be numpy array or Python list
+                array_data = audio["array"]
+                if isinstance(array_data, list):
+                    # Convert from list to tensor
+                    waveform = torch.tensor(array_data, dtype=torch.float32)
+                else:
+                    # Already numpy array or similar
+                    waveform = torch.tensor(array_data, dtype=torch.float32)
                 sr = audio.get("sampling_rate", 16000)
             elif "path" in audio:
                 # Load from path
