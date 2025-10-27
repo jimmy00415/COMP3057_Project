@@ -99,18 +99,17 @@ class WhisperTrainer:
             with autocast('cuda', enabled=self.use_amp):
                 outputs = self.model(input_features=input_features, labels=labels)
                 loss = outputs.loss
-            
-            # Scale loss for gradient accumulation (outside autocast)
-            scaled_loss = loss / gradient_accumulation_steps
+                # Scale loss for gradient accumulation inside autocast
+                loss = loss / gradient_accumulation_steps
             
             # Backward pass
             if self.use_amp:
-                self.scaler.scale(scaled_loss).backward()
+                self.scaler.scale(loss).backward()
             else:
-                scaled_loss.backward()
+                loss.backward()
             
-            # Track metrics (detach to avoid keeping graph)
-            total_loss += loss.detach().item()
+            # Track metrics with original unscaled loss
+            total_loss += (loss.detach().item() * gradient_accumulation_steps)
             
             # Gradient clipping and optimizer step
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
@@ -139,7 +138,7 @@ class WhisperTrainer:
             num_batches += 1
             
             # Update progress bar (use detached loss)
-            progress_bar.set_postfix({'loss': scaled_loss.detach().item()})
+            progress_bar.set_postfix({'loss': loss.detach().item()})
             
             # Log to experiment tracker
             if self.experiment_logger and self.global_step % 10 == 0:
