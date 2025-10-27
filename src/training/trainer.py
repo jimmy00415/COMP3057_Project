@@ -213,6 +213,34 @@ class WhisperTrainer:
         self.model.save_pretrained(model_dir)
         self.processor.save_pretrained(model_dir)
         logger.info(f"Model saved in HuggingFace format: {model_dir}")
+        
+        # Cleanup old checkpoints to save disk space
+        save_total_limit = self.config['training'].get('save_total_limit', None)
+        if save_total_limit is not None and 'best_model' not in filename:
+            self._cleanup_checkpoints(checkpoint_dir, save_total_limit)
+    
+    def _cleanup_checkpoints(self, checkpoint_dir: str, save_total_limit: int):
+        """Remove old checkpoints keeping only the most recent ones."""
+        import glob
+        
+        # Get all checkpoint files (excluding best_model)
+        checkpoint_files = glob.glob(os.path.join(checkpoint_dir, "checkpoint_epoch_*.pt"))
+        checkpoint_files.sort(key=os.path.getmtime)
+        
+        # Remove oldest checkpoints if we exceed the limit
+        if len(checkpoint_files) > save_total_limit:
+            files_to_remove = checkpoint_files[:-save_total_limit]
+            for file_path in files_to_remove:
+                try:
+                    os.remove(file_path)
+                    # Also remove corresponding HF directory
+                    hf_dir = file_path.replace('.pt', '_hf')
+                    if os.path.exists(hf_dir):
+                        import shutil
+                        shutil.rmtree(hf_dir)
+                    logger.info(f"Removed old checkpoint: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove {file_path}: {e}")
     
     def load_checkpoint(self, checkpoint_path: str):
         """Load training checkpoint."""

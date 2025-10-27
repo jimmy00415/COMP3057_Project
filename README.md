@@ -40,15 +40,42 @@ COMP3057_Project/
 
 ## 🚀 Quick Start (Google Colab)
 
-1. **Setup in Colab**
-   - Open Google Colab
-   - Enable GPU: Runtime → Change runtime type → GPU (T4 recommended)
-   - Run setup:
-   ```python
-   !git clone https://github.com/jimmy00415/COMP3057_Project.git
-   %cd COMP3057_Project
-   !pip install -r requirements.txt
-   ```
+### **Recommended: One-Click Setup**
+1. Open `whisper_asr_colab.ipynb` directly in Colab
+2. Runtime → Change runtime type → GPU (A100 if available, T4 minimum)
+3. Run all cells sequentially - setup is automatic!
+
+### Manual Setup (Alternative)
+```python
+# Clone and setup
+!git clone https://github.com/jimmy00415/COMP3057_Project.git
+%cd COMP3057_Project
+!pip install -r requirements.txt
+```
+
+### 🎛️ Colab Resource Optimization
+
+**Your Colab Resources:** A100 GPU (~40GB VRAM), 220GB Disk
+
+**Configuration Profiles:**
+
+| Profile | Model | Samples | Epochs | Time | Disk | Quality |
+|---------|-------|---------|--------|------|------|---------|
+| **Fast Demo** ⚡ | tiny | 50/10 | 1 | ~5min | ~2GB | Basic |
+| **Balanced** ⚖️ | base | 200/40 | 2 | ~20min | ~5GB | Good |
+| **Best Quality** 🏆 | small | 500/100 | 3 | ~60min | ~10GB | Better |
+
+**Adjustable Parameters** (in notebook cells):
+- `TRAIN_SAMPLES` / `VAL_SAMPLES` - Dataset size
+- `MODEL_VARIANT` - Model: 'tiny', 'base', or 'small'
+- `TRAIN_EPOCHS` - Number of training epochs
+
+**Features for Colab:**
+- ✅ Auto-save checkpoints to Google Drive (persists across sessions)
+- ✅ Automatic disk space monitoring
+- ✅ Memory cleanup after training
+- ✅ Small dataset streaming (no full download needed)
+- ✅ Optimized batch sizes and gradient accumulation
 
 3. **Run the Notebook**
    - Open `whisper_asr_colab.ipynb` in Colab
