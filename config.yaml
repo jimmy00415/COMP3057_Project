@@ -42,13 +42,13 @@ model:
   freeze_layers: 0  # Can freeze first 2-4 layers to speed up training
 
 training:
-  batch_size: 16  # Increased for 80GB GPU - small model can handle this
-  gradient_accumulation_steps: 2  # Effective batch size of 32
+  batch_size: 8  # Reduced to improve stability
+  gradient_accumulation_steps: 4  # Maintain effective batch size of 32
   num_epochs: 5  # Increased for better convergence with larger dataset
-  learning_rate: 3.0e-5  # Slightly lower for larger batch size
-  warmup_steps: 200  # Proportional to larger dataset
+  learning_rate: 1.0e-5  # Much lower to prevent gradient explosion
+  warmup_steps: 500  # Longer warmup for stability
   weight_decay: 0.01
-  max_grad_norm: 1.0
+  max_grad_norm: 0.5  # Stricter gradient clipping
   eval_steps: 50  # More frequent evaluation
   save_steps: 100  # Save checkpoints more frequently
   save_total_limit: 3  # Keep top 3 checkpoints
