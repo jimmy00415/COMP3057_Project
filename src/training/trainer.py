@@ -47,9 +47,12 @@ class WhisperTrainer:
         
         # Mixed precision training
         self.use_amp = config['training'].get('fp16', False) and torch.cuda.is_available()
-        self.scaler = GradScaler() if self.use_amp else None
+        self.scaler = GradScaler(
+            init_scale=2.**10,  # Lower initial scale for stability
+            growth_interval=2000  # Slower growth
+        ) if self.use_amp else None
         if self.use_amp:
-            logger.info("Mixed precision training (FP16) enabled")
+            logger.info("Mixed precision training (FP16) enabled with conservative scaling")
         
         # Initialize memory manager
         self.memory_manager = MemoryManager(threshold_gb=0.85)
@@ -139,7 +142,11 @@ class WhisperTrainer:
                 
                 # Gradient clipping and optimizer step
                 if not is_accumulation_step:
-                    # Check gradients for NaN/Inf before unscaling
+                    # Unscale gradients FIRST if using AMP
+                    if self.use_amp:
+                        self.scaler.unscale_(self.optimizer)
+                    
+                    # Check gradients for NaN/Inf AFTER unscaling
                     has_inf_or_nan = False
                     for param in self.model.parameters():
                         if param.grad is not None:
@@ -150,11 +157,9 @@ class WhisperTrainer:
                     if has_inf_or_nan:
                         logger.error(f"NaN/Inf gradients detected at batch {batch_idx}, skipping update")
                         self.optimizer.zero_grad()
+                        if self.use_amp:
+                            self.scaler.update()  # Update scaler even on skip
                         continue
-                    
-                    # Unscale gradients for clipping (if using AMP)
-                    if self.use_amp:
-                        self.scaler.unscale_(self.optimizer)
                     
                     # Gradient clipping
                     max_grad_norm = self.config['training'].get('max_grad_norm')
@@ -163,12 +168,17 @@ class WhisperTrainer:
                             self.model.parameters(),
                             max_grad_norm
                         )
-                        # Detect gradient explosion
-                        if grad_norm > max_grad_norm * 10:
-                            logger.warning(f"Large gradient norm detected: {grad_norm:.2f}")
+                        # Detect gradient explosion BEFORE clipping
+                        if grad_norm > max_grad_norm * 20:
+                            logger.warning(f"Extreme gradient norm: {grad_norm:.2f}, skipping")
+                            self.optimizer.zero_grad()
+                            if self.use_amp:
+                                self.scaler.update()
+                            continue
                     
                     # Optimizer step
                     if self.use_amp:
+                        # Check if step will be skipped due to inf/nan
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                     else:
