@@ -48,7 +48,7 @@ training:
   learning_rate: 1.0e-5  # Much lower to prevent gradient explosion
   warmup_steps: 500  # Longer warmup for stability
   weight_decay: 0.01
-  max_grad_norm: 0.5  # Stricter gradient clipping
+  max_grad_norm: 5.0  # Increased to standard value - 0.5 was way too strict
   eval_steps: 50  # More frequent evaluation
   save_steps: 100  # Save checkpoints more frequently
   save_total_limit: 3  # Keep top 3 checkpoints
