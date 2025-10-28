@@ -69,60 +69,93 @@ class StreamingASR:
         self.model.eval()
     
     def process_chunk(self, audio_chunk: np.ndarray) -> Optional[str]:
-        """Process a single audio chunk."""
-        # Add to buffer
-        self.buffer.append(audio_chunk)
-        
-        # Get audio for transcription
-        chunk_samples = int(self.chunk_length_sec * self.sr)
-        
-        if len(self.buffer) < chunk_samples:
-            return None  # Not enough audio yet
-        
-        # Extract chunk with overlap
-        audio = self.buffer.get_audio(self.chunk_length_sec)
-        
-        # Apply VAD if available
-        if self.vad is not None:
-            audio_tensor = torch.from_numpy(audio).float()
-            speech_timestamps = self.vad.detect_speech(audio_tensor, self.sr)
+        """Process a single audio chunk with error handling."""
+        try:
+            # Validate input
+            if audio_chunk is None or len(audio_chunk) == 0:
+                logger.warning("Empty audio chunk received")
+                return None
             
-            if not speech_timestamps:
-                return None  # No speech detected
-        
-        # Transcribe
-        transcription = self._transcribe(audio)
-        
-        if transcription:
-            self.transcription_history.append(transcription)
-        
-        return transcription
+            # Check for NaN/Inf
+            if np.isnan(audio_chunk).any() or np.isinf(audio_chunk).any():
+                logger.warning("NaN/Inf detected in audio chunk, cleaning")
+                audio_chunk = np.nan_to_num(audio_chunk, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # Add to buffer
+            self.buffer.append(audio_chunk)
+            
+            # Get audio for transcription
+            chunk_samples = int(self.chunk_length_sec * self.sr)
+            
+            if len(self.buffer) < chunk_samples:
+                return None  # Not enough audio yet
+            
+            # Extract chunk with overlap
+            audio = self.buffer.get_audio(self.chunk_length_sec)
+            
+            # Apply VAD if available
+            if self.vad is not None:
+                try:
+                    audio_tensor = torch.from_numpy(audio).float()
+                    speech_timestamps = self.vad.detect_speech(audio_tensor, self.sr)
+                    
+                    if not speech_timestamps:
+                        return None  # No speech detected
+                except Exception as e:
+                    logger.error(f"VAD failed: {e}, proceeding without VAD")
+            
+            # Transcribe
+            transcription = self._transcribe(audio)
+            
+            if transcription:
+                self.transcription_history.append(transcription)
+            
+            return transcription
+            
+        except Exception as e:
+            logger.error(f"Error processing audio chunk: {e}")
+            return None
     
     def _transcribe(self, audio: np.ndarray) -> str:
-        """Transcribe audio chunk."""
-        # Prepare input
-        input_features = self.processor(
-            audio,
-            sampling_rate=self.sr,
-            return_tensors="pt"
-        ).input_features.to(self.device)
-        
-        # Generate transcription
-        with torch.no_grad():
-            predicted_ids = self.model.generate(
-                input_features,
-                max_new_tokens=128,
-                num_beams=1,  # Greedy decoding for speed
-                temperature=0.0
-            )
-        
-        # Decode
-        transcription = self.processor.batch_decode(
-            predicted_ids,
-            skip_special_tokens=True
-        )[0].strip()
-        
-        return transcription
+        """Transcribe audio chunk with error handling."""
+        try:
+            # Validate audio
+            if audio is None or len(audio) == 0:
+                logger.warning("Empty audio for transcription")
+                return ""
+            
+            # Check for NaN/Inf
+            if np.isnan(audio).any() or np.isinf(audio).any():
+                logger.warning("NaN/Inf in transcription audio, cleaning")
+                audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # Prepare input
+            input_features = self.processor(
+                audio,
+                sampling_rate=self.sr,
+                return_tensors="pt"
+            ).input_features.to(self.device)
+            
+            # Generate transcription
+            with torch.no_grad():
+                predicted_ids = self.model.generate(
+                    input_features,
+                    max_new_tokens=128,
+                    num_beams=1,  # Greedy decoding for speed
+                    temperature=0.0
+                )
+            
+            # Decode
+            transcription = self.processor.batch_decode(
+                predicted_ids,
+                skip_special_tokens=True
+            )[0].strip()
+            
+            return transcription
+            
+        except Exception as e:
+            logger.error(f"Transcription failed: {e}")
+            return ""
     
     def stream_from_microphone(self, 
                                duration_sec: Optional[float] = None,
@@ -273,7 +306,18 @@ class BatchInference:
     def _process_batch(self, audio_paths: List[str]) -> List[str]:
         """Process a batch of audio files."""
         # Load and preprocess audio
-        audio_arrays = []
+        input_features_list = []
+        max_length = 30 * 16000  # 30 seconds at 16kHz
+        expected_frames_attr = getattr(self.processor.feature_extractor, "nb_max_frames", None)
+        if expected_frames_attr is not None and expected_frames_attr > 0:
+            expected_frames = int(expected_frames_attr)
+        else:
+            encoder = getattr(self.model, "model", None)
+            encoder = getattr(encoder, "encoder", None)
+            stride1 = getattr(getattr(encoder, "conv1", None), "stride", (1,))[0] if encoder is not None else 1
+            stride2 = getattr(getattr(encoder, "conv2", None), "stride", (1,))[0] if encoder is not None else 1
+            stride_product = max(stride1 * stride2, 1)
+            expected_frames = int(self.model.config.max_source_positions * stride_product)
         
         for path in audio_paths:
             waveform, sr = torchaudio.load(path)
@@ -286,22 +330,40 @@ class BatchInference:
                 waveform = torch.mean(waveform, dim=0)
             else:
                 waveform = waveform.squeeze(0)
+            waveform = waveform.float()
             
-            audio_arrays.append(waveform.numpy())
+            # Pad or truncate to fixed length (30 seconds)
+            if len(waveform) < max_length:
+                # Pad with zeros
+                padding = max_length - len(waveform)
+                waveform = torch.nn.functional.pad(waveform, (0, padding))
+            else:
+                # Truncate
+                waveform = waveform[:max_length]
+            
+            # Process each audio individually to ensure correct mel feature extraction
+            input_feature = self.processor(
+                waveform.cpu().numpy(),
+                sampling_rate=16000,
+                return_tensors="pt"
+            ).input_features
+            seq_len = input_feature.shape[-1]
+            if seq_len < expected_frames:
+                pad_amount = expected_frames - seq_len
+                input_feature = torch.nn.functional.pad(input_feature, (0, pad_amount))
+            elif seq_len > expected_frames:
+                input_feature = input_feature[..., :expected_frames]
+            
+            input_features_list.append(input_feature)
         
-        # Prepare batch - pad to Whisper's expected mel feature length
-        input_features = self.processor(
-            audio_arrays,
-            sampling_rate=16000,
-            return_tensors="pt",
-            padding="longest"
-        ).input_features.to(self.device)
+        # Stack all input features into a batch
+        input_features = torch.cat(input_features_list, dim=0).to(self.device)
         
-        # Generate transcriptions
+        # Generate transcriptions in batch
         with torch.no_grad():
             predicted_ids = self.model.generate(input_features)
         
-        # Decode
+        # Decode all transcriptions
         transcriptions = self.processor.batch_decode(
             predicted_ids,
             skip_special_tokens=True

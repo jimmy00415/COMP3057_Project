@@ -19,25 +19,68 @@ class MetricsCalculator:
         pass
     
     def compute_wer(self, predictions: List[str], references: List[str]) -> float:
-        """Compute Word Error Rate."""
-        # Filter empty strings
-        valid_pairs = [(p, r) for p, r in zip(predictions, references) if r.strip()]
+        """Compute Word Error Rate with robust error handling."""
+        if not predictions or not references:
+            logger.warning("Empty predictions or references provided to WER")
+            return 1.0
+            
+        if len(predictions) != len(references):
+            logger.error(f"Prediction/reference length mismatch: {len(predictions)} vs {len(references)}")
+            raise ValueError("Predictions and references must have the same length")
+        
+        # Filter empty strings and normalize
+        valid_pairs = []
+        for i, (p, r) in enumerate(zip(predictions, references)):
+            if not isinstance(p, str) or not isinstance(r, str):
+                logger.warning(f"Non-string value at index {i}, converting to string")
+                p, r = str(p), str(r)
+            
+            r_strip = r.strip()
+            if r_strip:  # Only include non-empty references
+                valid_pairs.append((p.strip(), r_strip))
         
         if not valid_pairs:
-            return 0.0
+            logger.warning("No valid pairs for WER computation")
+            return 1.0
         
-        preds, refs = zip(*valid_pairs)
-        return wer(list(refs), list(preds))
+        try:
+            preds, refs = zip(*valid_pairs)
+            return wer(list(refs), list(preds))
+        except Exception as e:
+            logger.error(f"WER computation failed: {e}")
+            return 1.0
     
     def compute_cer(self, predictions: List[str], references: List[str]) -> float:
-        """Compute Character Error Rate."""
-        valid_pairs = [(p, r) for p, r in zip(predictions, references) if r.strip()]
+        """Compute Character Error Rate with robust error handling."""
+        if not predictions or not references:
+            logger.warning("Empty predictions or references provided to CER")
+            return 1.0
+            
+        if len(predictions) != len(references):
+            logger.error(f"Prediction/reference length mismatch: {len(predictions)} vs {len(references)}")
+            raise ValueError("Predictions and references must have the same length")
+        
+        # Filter empty strings and normalize
+        valid_pairs = []
+        for i, (p, r) in enumerate(zip(predictions, references)):
+            if not isinstance(p, str) or not isinstance(r, str):
+                logger.warning(f"Non-string value at index {i}, converting to string")
+                p, r = str(p), str(r)
+            
+            r_strip = r.strip()
+            if r_strip:  # Only include non-empty references
+                valid_pairs.append((p.strip(), r_strip))
         
         if not valid_pairs:
-            return 0.0
+            logger.warning("No valid pairs for CER computation")
+            return 1.0
         
-        preds, refs = zip(*valid_pairs)
-        return cer(list(refs), list(preds))
+        try:
+            preds, refs = zip(*valid_pairs)
+            return cer(list(refs), list(preds))
+        except Exception as e:
+            logger.error(f"CER computation failed: {e}")
+            return 1.0
     
     def compute_all_metrics(self, predictions: List[str], references: List[str]) -> Dict[str, float]:
         """Compute all metrics."""

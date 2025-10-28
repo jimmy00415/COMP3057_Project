@@ -12,6 +12,10 @@ from typing import Dict, Optional
 import logging
 import os
 
+# Import new utilities
+from src.utils.memory import MemoryManager
+from src.utils.logging_config import MetricsLogger
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,14 @@ class WhisperTrainer:
         self.scaler = GradScaler() if self.use_amp else None
         if self.use_amp:
             logger.info("Mixed precision training (FP16) enabled")
+        
+        # Initialize memory manager
+        self.memory_manager = MemoryManager(threshold_gb=0.85)
+        self.memory_manager.log_memory_usage("Training init: ")
+        
+        # Initialize metrics logger
+        log_dir = config.get('log_dir', 'logs')
+        self.metrics_logger = MetricsLogger(log_dir)
         
         # Setup optimizer and scheduler
         self._setup_optimizer()
@@ -91,63 +103,119 @@ class WhisperTrainer:
         gradient_accumulation_steps = self.config['training'].get('gradient_accumulation_steps', 1)
         
         for batch_idx, batch in enumerate(progress_bar):
-            # Move batch to device
-            input_features = batch["input_features"].to(self.device)
-            labels = batch["labels"].to(self.device)
-            
-            # Context manager for gradient checkpointing compatibility
-            is_accumulation_step = (batch_idx + 1) % gradient_accumulation_steps != 0
-            
-            # Forward pass with automatic mixed precision
-            with autocast(device_type='cuda', enabled=self.use_amp):
-                outputs = self.model(input_features=input_features, labels=labels)
-                loss = outputs.loss / gradient_accumulation_steps
-            
-            # Backward pass - detach loss from graph immediately after backward
-            if self.use_amp:
-                self.scaler.scale(loss).backward()
-            else:
-                loss.backward()
-            
-            # Track metrics - store loss value before potential graph cleanup
-            loss_value = loss.detach().item() * gradient_accumulation_steps
-            total_loss += loss_value
-            
-            # Gradient clipping and optimizer step
-            if not is_accumulation_step:
-                # Unscale gradients for clipping (if using AMP)
-                if self.use_amp:
-                    self.scaler.unscale_(self.optimizer)
+            try:
+                # Move batch to device
+                input_features = batch["input_features"].to(self.device)
+                labels = batch["labels"].to(self.device)
                 
-                # Gradient clipping
-                if self.config['training'].get('max_grad_norm'):
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.config['training']['max_grad_norm']
-                    )
+                # Check for NaN/Inf in inputs
+                if torch.isnan(input_features).any() or torch.isinf(input_features).any():
+                    logger.error(f"NaN/Inf detected in input features at batch {batch_idx}")
+                    continue
                 
-                # Optimizer step
+                # Context manager for gradient checkpointing compatibility
+                is_accumulation_step = (batch_idx + 1) % gradient_accumulation_steps != 0
+                
+                # Forward pass with automatic mixed precision
+                with autocast(device_type='cuda', enabled=self.use_amp):
+                    outputs = self.model(input_features=input_features, labels=labels)
+                    loss = outputs.loss / gradient_accumulation_steps
+                
+                # Check for NaN/Inf loss
+                if torch.isnan(loss) or torch.isinf(loss):
+                    logger.error(f"NaN/Inf loss detected at batch {batch_idx}, skipping")
+                    self.optimizer.zero_grad()
+                    continue
+                
+                # Backward pass - detach loss from graph immediately after backward
                 if self.use_amp:
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
+                    self.scaler.scale(loss).backward()
                 else:
-                    self.optimizer.step()
+                    loss.backward()
                 
-                self.scheduler.step()
-                self.optimizer.zero_grad()
-                self.global_step += 1
-            
-            num_batches += 1
-            
-            # Update progress bar
-            progress_bar.set_postfix({'loss': loss_value / gradient_accumulation_steps})
-            
-            # Log to experiment tracker
-            if self.experiment_logger and self.global_step % 10 == 0:
-                self.experiment_logger.log_metrics({
-                    'train/loss': loss_value,
-                    'train/learning_rate': self.scheduler.get_last_lr()[0]
-                }, step=self.global_step)
+                # Track metrics - store loss value before potential graph cleanup
+                loss_value = loss.detach().item() * gradient_accumulation_steps
+                total_loss += loss_value
+                
+                # Gradient clipping and optimizer step
+                if not is_accumulation_step:
+                    # Check gradients for NaN/Inf before unscaling
+                    has_inf_or_nan = False
+                    for param in self.model.parameters():
+                        if param.grad is not None:
+                            if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
+                                has_inf_or_nan = True
+                                break
+                    
+                    if has_inf_or_nan:
+                        logger.error(f"NaN/Inf gradients detected at batch {batch_idx}, skipping update")
+                        self.optimizer.zero_grad()
+                        continue
+                    
+                    # Unscale gradients for clipping (if using AMP)
+                    if self.use_amp:
+                        self.scaler.unscale_(self.optimizer)
+                    
+                    # Gradient clipping
+                    max_grad_norm = self.config['training'].get('max_grad_norm')
+                    if max_grad_norm:
+                        grad_norm = torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(),
+                            max_grad_norm
+                        )
+                        # Detect gradient explosion
+                        if grad_norm > max_grad_norm * 10:
+                            logger.warning(f"Large gradient norm detected: {grad_norm:.2f}")
+                    
+                    # Optimizer step
+                    if self.use_amp:
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        self.optimizer.step()
+                    
+                    self.scheduler.step()
+                    self.optimizer.zero_grad()
+                    self.global_step += 1
+                
+                num_batches += 1
+                
+                # Update progress bar
+                progress_bar.set_postfix({'loss': loss_value / gradient_accumulation_steps})
+                
+                # Memory management - check every 10 batches
+                if batch_idx % 10 == 0:
+                    self.memory_manager.check_and_cleanup()
+                
+                # Log to experiment tracker and metrics logger
+                if self.experiment_logger and self.global_step % 10 == 0:
+                    self.experiment_logger.log_metrics({
+                        'train/loss': loss_value,
+                        'train/learning_rate': self.scheduler.get_last_lr()[0]
+                    }, step=self.global_step)
+                
+                # Log training step to metrics logger
+                if self.global_step % 10 == 0:
+                    self.metrics_logger.log_training_step(
+                        epoch=self.current_epoch,
+                        step=self.global_step,
+                        loss=loss_value,
+                        learning_rate=self.scheduler.get_last_lr()[0]
+                    )
+                    
+            except RuntimeError as e:
+                if "out of memory" in str(e):
+                    logger.error(f"OOM at batch {batch_idx}, clearing cache and continuing")
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    self.optimizer.zero_grad()
+                    continue
+                else:
+                    logger.error(f"Runtime error at batch {batch_idx}: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"Unexpected error at batch {batch_idx}: {e}")
+                raise
         
         avg_loss = total_loss / num_batches
         return {'loss': avg_loss}
@@ -157,6 +225,9 @@ class WhisperTrainer:
         self.model.eval()
         total_loss = 0.0
         num_batches = 0
+        
+        # Log memory before validation
+        self.memory_manager.log_memory_usage("Validation start: ")
         
         with torch.no_grad():
             for batch in tqdm(self.val_loader, desc="Validation"):
@@ -170,6 +241,16 @@ class WhisperTrainer:
                 num_batches += 1
         
         avg_loss = total_loss / num_batches
+        
+        # Log memory after validation
+        mem_info = self.memory_manager.get_memory_info()
+        self.metrics_logger.log_memory(
+            ram_used_gb=mem_info['ram_used_gb'],
+            ram_percent=mem_info['ram_percent'],
+            gpu_used_gb=mem_info.get('gpu_used_gb'),
+            gpu_percent=mem_info.get('gpu_percent')
+        )
+        
         return {'loss': avg_loss}
     
     def train(self, num_epochs: int = None):
@@ -219,35 +300,69 @@ class WhisperTrainer:
         return self.best_val_loss
     
     def save_checkpoint(self, filename: str):
-        """Save training checkpoint."""
+        """Save training checkpoint with validation."""
         checkpoint_dir = "checkpoints"
         os.makedirs(checkpoint_dir, exist_ok=True)
         
         checkpoint_path = os.path.join(checkpoint_dir, filename)
+        temp_checkpoint_path = checkpoint_path + ".tmp"
         
-        checkpoint = {
-            'epoch': self.current_epoch,
-            'global_step': self.global_step,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
-            'best_val_loss': self.best_val_loss,
-            'config': self.config
-        }
-        
-        torch.save(checkpoint, checkpoint_path)
-        logger.info(f"Checkpoint saved: {checkpoint_path}")
+        try:
+            checkpoint = {
+                'epoch': self.current_epoch,
+                'global_step': self.global_step,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'scheduler_state_dict': self.scheduler.state_dict(),
+                'best_val_loss': self.best_val_loss,
+                'config': self.config,
+                'scaler_state_dict': self.scaler.state_dict() if self.scaler else None
+            }
+            
+            # Save to temporary file first
+            torch.save(checkpoint, temp_checkpoint_path)
+            
+            # Validate checkpoint can be loaded
+            try:
+                test_load = torch.load(temp_checkpoint_path, map_location='cpu')
+                if 'model_state_dict' not in test_load:
+                    raise ValueError("Checkpoint missing model_state_dict")
+            except Exception as e:
+                logger.error(f"Checkpoint validation failed: {e}")
+                if os.path.exists(temp_checkpoint_path):
+                    os.remove(temp_checkpoint_path)
+                raise
+            
+            # Atomic rename
+            if os.path.exists(checkpoint_path):
+                os.replace(temp_checkpoint_path, checkpoint_path)
+            else:
+                os.rename(temp_checkpoint_path, checkpoint_path)
+                
+            logger.info(f"Checkpoint saved: {checkpoint_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint {filename}: {e}")
+            if os.path.exists(temp_checkpoint_path):
+                os.remove(temp_checkpoint_path)
+            raise
         
         # Also save as HuggingFace format
-        model_dir = checkpoint_path.replace('.pt', '_hf')
-        self.model.save_pretrained(model_dir)
-        self.processor.save_pretrained(model_dir)
-        logger.info(f"Model saved in HuggingFace format: {model_dir}")
+        try:
+            model_dir = checkpoint_path.replace('.pt', '_hf')
+            self.model.save_pretrained(model_dir)
+            self.processor.save_pretrained(model_dir)
+            logger.info(f"Model saved in HuggingFace format: {model_dir}")
+        except Exception as e:
+            logger.error(f"Failed to save HuggingFace format: {e}")
         
         # Cleanup old checkpoints to save disk space
         save_total_limit = self.config['training'].get('save_total_limit', None)
         if save_total_limit is not None and 'best_model' not in filename:
-            self._cleanup_checkpoints(checkpoint_dir, save_total_limit)
+            try:
+                self._cleanup_checkpoints(checkpoint_dir, save_total_limit)
+            except Exception as e:
+                logger.error(f"Checkpoint cleanup failed: {e}")
     
     def _cleanup_checkpoints(self, checkpoint_dir: str, save_total_limit: int):
         """Remove old checkpoints keeping only the most recent ones."""
