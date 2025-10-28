@@ -36,7 +36,7 @@ class AudioPreprocessor:
         """Normalize audio loudness to -20 dBFS."""
         # Peak normalization
         max_val = torch.abs(waveform).max()
-        if max_val > 0:
+        if max_val > 1e-8:  # Prevent division by near-zero
             waveform = waveform / max_val * 0.95
         return waveform
     

@@ -27,16 +27,30 @@ class AudioAugmenter:
         if speed_factor == 1.0:
             return waveform
         
-        # Use resampling to change speed
-        new_sr = int(sr * speed_factor)
-        resampler = torchaudio.transforms.Resample(sr, new_sr)
-        perturbed = resampler(waveform.unsqueeze(0))
-        
-        # Resample back to original rate
-        resampler_back = torchaudio.transforms.Resample(new_sr, sr)
-        perturbed = resampler_back(perturbed)
-        
-        return perturbed.squeeze(0)
+        try:
+            # Resample to change speed
+            new_sr = int(sr * speed_factor)
+            
+            # Prevent extreme speeds
+            if new_sr < 8000 or new_sr > 32000:
+                return waveform
+            
+            resampler = torchaudio.transforms.Resample(sr, new_sr)
+            perturbed = resampler(waveform.unsqueeze(0))
+            
+            # Resample back to original rate
+            resampler_back = torchaudio.transforms.Resample(new_sr, sr)
+            perturbed = resampler_back(perturbed)
+            
+            result = perturbed.squeeze(0)
+            
+            # Check for NaN/Inf
+            if torch.isnan(result).any() or torch.isinf(result).any():
+                return waveform
+            
+            return result
+        except Exception:
+            return waveform
     
     def apply_pitch_shift(self, waveform: torch.Tensor, sr: int) -> torch.Tensor:
         """Apply random pitch shift."""
@@ -45,19 +59,33 @@ class AudioAugmenter:
         if semitones == 0:
             return waveform
         
-        # Pitch shift using resampling
-        n_steps = semitones
-        rate = 2 ** (n_steps / 12)
-        
-        new_sr = int(sr * rate)
-        resampler = torchaudio.transforms.Resample(sr, new_sr)
-        shifted = resampler(waveform.unsqueeze(0))
-        
-        # Resample back without changing speed
-        resampler_back = torchaudio.transforms.Resample(new_sr, sr)
-        shifted = resampler_back(shifted)
-        
-        return shifted.squeeze(0)
+        try:
+            # Pitch shift using resampling
+            n_steps = semitones
+            rate = 2 ** (n_steps / 12)
+            
+            new_sr = int(sr * rate)
+            
+            # Prevent extreme resampling rates
+            if new_sr < 8000 or new_sr > 32000:
+                return waveform
+            
+            resampler = torchaudio.transforms.Resample(sr, new_sr)
+            shifted = resampler(waveform.unsqueeze(0))
+            
+            # Resample back without changing speed
+            resampler_back = torchaudio.transforms.Resample(new_sr, sr)
+            shifted = resampler_back(shifted)
+            
+            result = shifted.squeeze(0)
+            
+            # Check for NaN/Inf
+            if torch.isnan(result).any() or torch.isinf(result).any():
+                return waveform
+            
+            return result
+        except Exception:
+            return waveform
     
     def add_background_noise(self, waveform: torch.Tensor, 
                             noise_waveform: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -67,7 +95,7 @@ class AudioAugmenter:
         
         # Generate white noise if no noise provided
         if noise_waveform is None:
-            noise_waveform = torch.randn_like(waveform)
+            noise_waveform = torch.randn_like(waveform) * 0.1  # Limit initial noise amplitude
         else:
             # Ensure noise matches signal length
             if len(noise_waveform) < len(waveform):
@@ -87,11 +115,22 @@ class AudioAugmenter:
         signal_power = waveform.norm(p=2)
         noise_power = noise_waveform.norm(p=2)
         
+        # Prevent division by zero
+        if signal_power < 1e-8 or noise_power < 1e-8:
+            return waveform
+        
         # Scale noise to achieve target SNR
         snr = 10 ** (snr_db / 10)
         scale = signal_power / (noise_power * np.sqrt(snr))
         
+        # Clamp scale to prevent extreme values
+        scale = min(scale, 10.0)
+        
         noisy_waveform = waveform + scale * noise_waveform
+        
+        # Check for NaN/Inf
+        if torch.isnan(noisy_waveform).any() or torch.isinf(noisy_waveform).any():
+            return waveform
         
         # Normalize to prevent clipping
         max_val = noisy_waveform.abs().max()
