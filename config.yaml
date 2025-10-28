@@ -35,25 +35,25 @@ model:
     small: "openai/whisper-small"
     medium: "openai/whisper-medium"
     distil: "distil-whisper/distil-large-v3"
-  default_variant: "tiny"  # Changed to tiny for Colab - faster and less memory
+  default_variant: "small"  # Using small for better quality with 80GB GPU
   language: "english"
   task: "transcribe"
   freeze_encoder: false
   freeze_layers: 0  # Can freeze first 2-4 layers to speed up training
 
 training:
-  batch_size: 4  # Reduced for A100 memory efficiency
-  gradient_accumulation_steps: 4  # Increased to maintain effective batch size of 16
-  num_epochs: 3  # Reduced for faster training in Colab
-  learning_rate: 5.0e-5
-  warmup_steps: 100  # Reduced proportionally
+  batch_size: 16  # Increased for 80GB GPU - small model can handle this
+  gradient_accumulation_steps: 2  # Effective batch size of 32
+  num_epochs: 5  # Increased for better convergence with larger dataset
+  learning_rate: 3.0e-5  # Slightly lower for larger batch size
+  warmup_steps: 200  # Proportional to larger dataset
   weight_decay: 0.01
   max_grad_norm: 1.0
-  eval_steps: 100  # More frequent evaluation
-  save_steps: 200  # Save less frequently to save disk space
-  save_total_limit: 2  # Keep only 2 checkpoints to save disk space
-  early_stopping_patience: 2  # Reduced for faster convergence
-  fp16: true  # Use mixed precision for memory efficiency
+  eval_steps: 50  # More frequent evaluation
+  save_steps: 100  # Save checkpoints more frequently
+  save_total_limit: 3  # Keep top 3 checkpoints
+  early_stopping_patience: 3  # More patience for larger dataset
+  fp16: true  # Keep mixed precision for efficiency
 
 evaluation:
   metrics:
