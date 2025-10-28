@@ -23,7 +23,7 @@ data:
     - name: "speechocean762"
       version: "v1"
   augmentation:
-    enabled: true
+    enabled: false  # Disabled temporarily - causing NaN gradients
     speed_perturbation: [0.9, 1.0, 1.1]
     pitch_shift_semitones: [-2, 0, 2]
     background_noise_prob: 0.3

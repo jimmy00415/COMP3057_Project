@@ -160,6 +160,12 @@ class WhisperDataset(Dataset):
                 sampling_rate=16000,
                 return_tensors="pt"
             ).input_features.squeeze(0)
+            
+            # Validate features
+            if torch.isnan(input_features).any() or torch.isinf(input_features).any():
+                logger.error(f"NaN/Inf in features at index {idx}, using zeros")
+                input_features = torch.zeros_like(input_features)
+                
         except Exception as e:
             logger.error(f"Feature extraction failed at index {idx}: {e}")
             raise RuntimeError(f"Processor failed for audio at index {idx}") from e
