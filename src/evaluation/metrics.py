@@ -7,6 +7,7 @@ import numpy as np
 from typing import Dict, List, Tuple
 import logging
 from tqdm.auto import tqdm
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -15,8 +16,27 @@ logger = logging.getLogger(__name__)
 class MetricsCalculator:
     """Calculate WER, CER, and other ASR metrics."""
     
-    def __init__(self):
-        pass
+    def __init__(self, normalize: bool = True):
+        """
+        Initialize metrics calculator.
+        
+        Args:
+            normalize: Whether to normalize text (lowercase, remove punctuation) before metrics calculation
+        """
+        self.normalize = normalize
+    
+    def _normalize_text(self, text: str) -> str:
+        """Normalize text for fair comparison."""
+        if not self.normalize:
+            return text
+        
+        # Convert to lowercase
+        text = text.lower()
+        # Remove punctuation
+        text = re.sub(r'[^\w\s]', '', text)
+        # Normalize whitespace
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
     
     def compute_wer(self, predictions: List[str], references: List[str]) -> float:
         """Compute Word Error Rate with robust error handling."""
@@ -37,7 +57,10 @@ class MetricsCalculator:
             
             r_strip = r.strip()
             if r_strip:  # Only include non-empty references
-                valid_pairs.append((p.strip(), r_strip))
+                # Apply normalization
+                p_norm = self._normalize_text(p.strip())
+                r_norm = self._normalize_text(r_strip)
+                valid_pairs.append((p_norm, r_norm))
         
         if not valid_pairs:
             logger.warning("No valid pairs for WER computation")
@@ -69,7 +92,10 @@ class MetricsCalculator:
             
             r_strip = r.strip()
             if r_strip:  # Only include non-empty references
-                valid_pairs.append((p.strip(), r_strip))
+                # Apply normalization
+                p_norm = self._normalize_text(p.strip())
+                r_norm = self._normalize_text(r_strip)
+                valid_pairs.append((p_norm, r_norm))
         
         if not valid_pairs:
             logger.warning("No valid pairs for CER computation")
@@ -237,7 +263,9 @@ class ModelEvaluator:
                 
                 samples.append({
                     'prediction': prediction,
-                    'reference': reference
+                    'reference': reference,
+                    'prediction_normalized': self.metrics_calc._normalize_text(prediction),
+                    'reference_normalized': self.metrics_calc._normalize_text(reference)
                 })
                 
                 count += 1
