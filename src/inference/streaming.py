@@ -245,35 +245,43 @@ class StreamingASR:
             return " ".join(self.transcription_history)
     
     def _merge_transcriptions(self, transcriptions: List[str]) -> str:
-        """Merge overlapping transcriptions using simple deduplication."""
+        """Merge overlapping transcriptions using word-level overlap detection."""
         if not transcriptions:
             return ""
         
-        # Simple approach: join with space and remove obvious duplicates
-        merged = transcriptions[0]
+        if len(transcriptions) == 1:
+            return transcriptions[0].strip()
+        
+        # Start with first transcription
+        merged_words = transcriptions[0].strip().split()
         
         for i in range(1, len(transcriptions)):
-            current = transcriptions[i]
+            current_words = transcriptions[i].strip().split()
             
-            # Find overlap by checking if end of merged matches start of current
-            overlap_found = False
-            for overlap_len in range(min(50, len(merged.split())), 0, -1):
-                merged_end = " ".join(merged.split()[-overlap_len:])
-                current_start = " ".join(current.split()[:overlap_len])
+            if not current_words:
+                continue
+            
+            # Find longest overlap between end of merged and start of current
+            max_overlap = min(len(merged_words), len(current_words))
+            overlap_len = 0
+            
+            for test_len in range(max_overlap, 0, -1):
+                merged_end = [w.lower() for w in merged_words[-test_len:]]
+                current_start = [w.lower() for w in current_words[:test_len]]
                 
-                if merged_end.lower() == current_start.lower():
-                    # Found overlap, merge
-                    remaining = " ".join(current.split()[overlap_len:])
-                    if remaining:
-                        merged = merged + " " + remaining
-                    overlap_found = True
+                if merged_end == current_start:
+                    overlap_len = test_len
                     break
             
-            if not overlap_found:
-                # No overlap, just append
-                merged = merged + " " + current
+            # Merge by taking unique words from current
+            if overlap_len > 0:
+                # Skip overlapping words in current
+                merged_words.extend(current_words[overlap_len:])
+            else:
+                # No overlap found - this might be a new phrase, add all words
+                merged_words.extend(current_words)
         
-        return merged.strip()
+        return " ".join(merged_words)
     
     def reset(self):
         """Reset streaming state."""
