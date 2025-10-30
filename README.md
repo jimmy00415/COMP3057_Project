@@ -150,6 +150,27 @@ print(f"WER: {results['wer']:.3f}")
 print(f"CER: {results['cer']:.3f}")
 ```
 
+### Learning Curve Visualization
+
+```python
+from src.evaluation.learning_curves import LearningCurveVisualizer
+import matplotlib.pyplot as plt
+
+# Load and visualize training metrics
+visualizer = LearningCurveVisualizer('logs/metrics_20240101_120000.jsonl')
+visualizer.print_summary()
+fig = visualizer.plot_learning_curves(save_path='plots/learning_curves.png')
+plt.show()
+```
+
+Or use the command-line tool:
+
+```bash
+python visualize_training.py logs/metrics_20240101_120000.jsonl --output plots/learning_curves.png
+```
+
+See `LEARNING_CURVES.md` for detailed usage and examples.
+
 ## 🔬 Technical Stack
 
 - **Deep Learning**: PyTorch 2.0+, Transformers

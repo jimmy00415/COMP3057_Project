@@ -230,11 +230,22 @@ class WhisperTrainer:
         avg_loss = total_loss / num_batches
         return {'loss': avg_loss}
     
-    def validate(self) -> Dict[str, float]:
-        """Validate on validation set."""
+    def validate(self, compute_wer_cer: bool = False) -> Dict[str, float]:
+        """Validate on validation set.
+        
+        Args:
+            compute_wer_cer: Whether to compute WER/CER (slower but more informative)
+        
+        Returns:
+            Dictionary with validation metrics
+        """
         self.model.eval()
         total_loss = 0.0
         num_batches = 0
+        
+        # For WER/CER calculation
+        all_predictions = []
+        all_references = []
         
         # Log memory before validation
         self.memory_manager.log_memory_usage("Validation start: ")
@@ -249,8 +260,46 @@ class WhisperTrainer:
                 
                 total_loss += loss.item()
                 num_batches += 1
+                
+                # Generate predictions for WER/CER if requested
+                if compute_wer_cer:
+                    predicted_ids = self.model.generate(input_features, max_length=225)
+                    predictions = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
+                    
+                    # Decode reference labels
+                    labels[labels == -100] = self.processor.tokenizer.pad_token_id
+                    references = self.processor.batch_decode(labels, skip_special_tokens=True)
+                    
+                    all_predictions.extend(predictions)
+                    all_references.extend(references)
         
         avg_loss = total_loss / num_batches
+        metrics = {'loss': avg_loss}
+        
+        # Calculate WER/CER if requested
+        if compute_wer_cer and all_predictions:
+            from jiwer import wer, cer
+            import re
+            
+            # Text normalization function
+            def normalize_text(text):
+                text = text.lower()
+                text = re.sub(r'[^\w\s]', '', text)
+                text = re.sub(r'\s+', ' ', text)
+                return text.strip()
+            
+            # Normalize all texts
+            norm_predictions = [normalize_text(p) for p in all_predictions]
+            norm_references = [normalize_text(r) for r in all_references]
+            
+            # Calculate metrics
+            try:
+                wer_score = wer(norm_references, norm_predictions)
+                cer_score = cer(norm_references, norm_predictions)
+                metrics['wer'] = wer_score
+                metrics['cer'] = cer_score
+            except Exception as e:
+                logger.warning(f"Failed to calculate WER/CER: {e}")
         
         # Log memory after validation
         mem_info = self.memory_manager.get_memory_info()
@@ -261,14 +310,23 @@ class WhisperTrainer:
             gpu_percent=mem_info.get('gpu_percent')
         )
         
-        return {'loss': avg_loss}
+        return metrics
     
-    def train(self, num_epochs: int = None):
-        """Full training loop."""
+    def train(self, num_epochs: int = None, compute_metrics_every: int = 1):
+        """Full training loop.
+        
+        Args:
+            num_epochs: Number of epochs to train
+            compute_metrics_every: Compute WER/CER every N epochs (0 to disable)
+        
+        Returns:
+            Best validation loss achieved
+        """
         if num_epochs is None:
             num_epochs = self.config['training']['num_epochs']
         
         logger.info(f"Starting training for {num_epochs} epochs")
+        logger.info(f"WER/CER will be computed every {compute_metrics_every} epoch(s)" if compute_metrics_every > 0 else "WER/CER computation disabled")
         
         for epoch in range(num_epochs):
             self.current_epoch = epoch
@@ -277,17 +335,36 @@ class WhisperTrainer:
             train_metrics = self.train_epoch()
             logger.info(f"Epoch {epoch + 1}/{num_epochs} - Train Loss: {train_metrics['loss']:.4f}")
             
-            # Validate
-            val_metrics = self.validate()
-            logger.info(f"Epoch {epoch + 1}/{num_epochs} - Val Loss: {val_metrics['loss']:.4f}")
+            # Validate - compute WER/CER periodically
+            should_compute_wer_cer = compute_metrics_every > 0 and (epoch + 1) % compute_metrics_every == 0
+            val_metrics = self.validate(compute_wer_cer=should_compute_wer_cer)
+            
+            log_msg = f"Epoch {epoch + 1}/{num_epochs} - Val Loss: {val_metrics['loss']:.4f}"
+            if 'wer' in val_metrics:
+                log_msg += f", WER: {val_metrics['wer']:.4f}, CER: {val_metrics['cer']:.4f}"
+            logger.info(log_msg)
             
             # Log to experiment tracker
+            metrics_to_log = {
+                'epoch': epoch + 1,
+                'train/epoch_loss': train_metrics['loss'],
+                'val/loss': val_metrics['loss']
+            }
+            if 'wer' in val_metrics:
+                metrics_to_log['val/wer'] = val_metrics['wer']
+                metrics_to_log['val/cer'] = val_metrics['cer']
+                
             if self.experiment_logger:
-                self.experiment_logger.log_metrics({
-                    'epoch': epoch + 1,
-                    'train/epoch_loss': train_metrics['loss'],
-                    'val/loss': val_metrics['loss']
-                }, step=self.global_step)
+                self.experiment_logger.log_metrics(metrics_to_log, step=self.global_step)
+            
+            # Log to metrics logger
+            if 'wer' in val_metrics:
+                self.metrics_logger.log_evaluation(
+                    epoch=epoch + 1,
+                    wer=val_metrics['wer'],
+                    cer=val_metrics['cer'],
+                    val_loss=val_metrics['loss']
+                )
             
             # Save checkpoint
             if (epoch + 1) % self.config['training'].get('save_steps', 1000) == 0:
@@ -307,6 +384,7 @@ class WhisperTrainer:
                     break
         
         logger.info("Training completed!")
+        logger.info(f"Best validation loss: {self.best_val_loss:.4f}")
         return self.best_val_loss
     
     def save_checkpoint(self, filename: str):
