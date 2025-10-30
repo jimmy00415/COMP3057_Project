@@ -2,9 +2,13 @@
 
 **Author:** CHEN YIWEI (22256024)  
 **Course:** COMP3057 Advanced Topics in AI  
-**Institution:** University of Macau
+**Institution:** HKBU
 
 Production-ready real-time speech recognition system using OpenAI's Whisper models with complete training pipeline, evaluation metrics, and learning curve visualization.
+
+
+<img width="2090" height="1578" alt="image" src="https://github.com/user-attachments/assets/521ed570-3288-43e3-8bf7-e06e323589ff" />
+
 
 ## 🎯 Features
 
