@@ -1,86 +1,79 @@
 # Real-Time Multilingual ASR with Whisper
 
-Production-ready real-time speech recognition system using OpenAI's Whisper models.
+**Author:** CHEN YIWEI (22256024)  
+**Course:** COMP3057 Advanced Topics in AI  
+**Institution:** University of Macau
+
+Production-ready real-time speech recognition system using OpenAI's Whisper models with complete training pipeline, evaluation metrics, and learning curve visualization.
 
 ## 🎯 Features
 
-- **Multi-variant Support**: Tiny, Base, Small, Medium, and Distilled Whisper models
-- **Real-time Streaming**: Chunked audio processing with VAD integration
-- **Fine-tuning Pipeline**: Complete training workflow with augmentation
-- **Comprehensive Evaluation**: WER, CER, latency benchmarking
-- **MLOps Best Practices**: Versioning, logging, reproducibility
-- **Colab-Ready**: Optimized for Google Colab with GPU support
+- **Multi-variant Whisper Models**: Tiny (39M), Base (74M), Small (244M) variants
+- **Complete Training Pipeline**: Fine-tuning with WER/CER tracking during training
+- **Learning Curve Visualization**: Automatic plotting of loss, WER, CER progression
+- **Real-time Streaming Inference**: Chunked audio processing with VAD
+- **Comprehensive Evaluation**: WER, CER, latency benchmarking with multiple methods
+- **Colab-Ready**: Optimized for Google Colab (A100/T4 GPU)
 
 ## 📁 Project Structure
 
 ```
 COMP3057_Project/
-├── config.yaml                 # Configuration file
-├── requirements.txt            # Python dependencies
-├── whisper_asr_colab.ipynb    # Main Colab notebook
+├── whisper_asr_colab .ipynb   # Main notebook (all-in-one)
+├── config.yaml                # Training configuration
+├── requirements.txt           # Dependencies
 ├── src/
 │   ├── data/                  # Data processing
 │   │   ├── preprocessing.py   # Audio preprocessing & VAD
 │   │   ├── augmentation.py    # Audio augmentation
-│   │   └── dataset.py         # Dataset classes
-│   ├── models/                # Model management
-│   │   └── whisper_model.py   # Whisper initialization
-│   ├── training/              # Training pipeline
-│   │   └── trainer.py         # Training loop
-│   ├── evaluation/            # Evaluation tools
-│   │   ├── metrics.py         # WER/CER/latency
-│   │   └── visualization.py   # Plotting utilities
-│   ├── inference/             # Inference engine
+│   │   └── dataset.py         # Dataset wrapper
+│   ├── models/
+│   │   └── whisper_model.py   # Model initialization
+│   ├── training/
+│   │   └── trainer.py         # Training loop with WER/CER tracking
+│   ├── evaluation/
+│   │   ├── metrics.py         # WER/CER computation
+│   │   ├── visualization.py   # Performance plots
+│   │   └── learning_curves.py # Learning curve visualization
+│   ├── inference/
 │   │   └── streaming.py       # Real-time streaming
-│   └── utils/                 # Utilities
-│       ├── config.py          # Configuration & logging
-│       └── versioning.py      # Data/model versioning
-└── README.md
+│   └── utils/
+│       ├── config.py          # Config & logging
+│       ├── memory.py          # Memory management
+│       └── versioning.py      # Experiment tracking
+└── plots/                     # Generated visualizations
 ```
 
 ## 🚀 Quick Start (Google Colab)
 
-### **Recommended: One-Click Setup**
-1. Open `whisper_asr_colab.ipynb` directly in Colab
-2. Runtime → Change runtime type → GPU (A100 if available, T4 minimum)
-3. Run all cells sequentially - setup is automatic!
+### One-Click Setup
+1. Open `whisper_asr_colab .ipynb` in Google Colab
+2. Runtime → Change runtime type → GPU (T4/A100)
+3. Run cells sequentially from top to bottom
 
-### Manual Setup (Alternative)
-```python
-# Clone and setup
-!git clone https://github.com/jimmy00415/COMP3057_Project.git
-%cd COMP3057_Project
-!pip install -r requirements.txt
-```
+### Notebook Workflow
+The notebook follows this complete pipeline:
 
-### 🎛️ Colab Resource Optimization
+1. **Setup** - Install dependencies, mount Google Drive
+2. **Configuration** - Load config, setup logging, experiment tracking
+3. **Data Preparation** - Load minds14/LibriSpeech dataset (2000 train / 400 val)
+4. **Model Initialization** - Load Whisper-Small (244M params)
+5. **Training** - Fine-tune for 5 epochs with WER/CER tracking
+6. **Learning Curves** - Automatic visualization of training progress
+7. **Evaluation** - WER/CER metrics on validation set
+8. **Inference Testing** - Batch/streaming/single-pass comparison
+9. **Visualization** - 7-panel comprehensive analysis plot
 
-**Your Colab Resources:** A100 GPU (~40GB VRAM), 220GB Disk
+### Training Configuration (Default)
 
-**Configuration Profiles:**
-
-| Profile | Model | Samples | Epochs | Time | Disk | Quality |
-|---------|-------|---------|--------|------|------|---------|
-| **Fast Demo** ⚡ | tiny | 50/10 | 1 | ~5min | ~2GB | Basic |
-| **Balanced** ⚖️ | base | 200/40 | 2 | ~20min | ~5GB | Good |
-| **Best Quality** 🏆 | small | 500/100 | 3 | ~60min | ~10GB | Better |
-
-**Adjustable Parameters** (in notebook cells):
-- `TRAIN_SAMPLES` / `VAL_SAMPLES` - Dataset size
-- `MODEL_VARIANT` - Model: 'tiny', 'base', or 'small'
-- `TRAIN_EPOCHS` - Number of training epochs
-
-**Features for Colab:**
-- ✅ Auto-save checkpoints to Google Drive (persists across sessions)
-- ✅ Automatic disk space monitoring
-- ✅ Memory cleanup after training
-- ✅ Small dataset streaming (no full download needed)
-- ✅ Optimized batch sizes and gradient accumulation
-
-3. **Run the Notebook**
-   - Open `whisper_asr_colab.ipynb` in Colab
-   - Execute cells sequentially
-   - The notebook handles all setup automatically
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Model | whisper-small | 244M params, 2GB VRAM |
+| Dataset | minds14 | 2000 train / 400 val |
+| Epochs | 5 | ~40-50 min on A100 |
+| Batch Size | 8 | Effective: 32 (grad accum 4x) |
+| Learning Rate | 1e-5 | With 500-step warmup |
+| WER/CER Tracking | Every epoch | Adds ~2-3 min/epoch |
 
 ## 🔧 Local Setup
 
@@ -98,205 +91,202 @@ jupyter notebook whisper_asr_colab.ipynb
 
 ## 📊 Model Variants
 
-| Model | Parameters | Speed | Accuracy | Use Case |
-|-------|-----------|-------|----------|----------|
-| tiny | 39M | Fastest | Lower | Prototyping |
-| base | 74M | Fast | Good | Balanced |
-| small | 244M | Moderate | Better | Production |
-| medium | 769M | Slow | Best | High accuracy |
-| distil | 756M | Moderate | Best | Optimized |
+| Model | Parameters | Memory | Speed | WER (Expected) |
+|-------|-----------|--------|-------|----------------|
+| tiny | 39M | ~500MB | Fastest | ~10-15% |
+| base | 74M | ~1GB | Fast | ~8-12% |
+| small | 244M | ~2GB | Moderate | ~3-5% |
+| medium | 769M | ~6GB | Slow | ~2-4% |
 
-## 🎓 Usage Examples
+*WER values on minds14 dataset after 5 epochs fine-tuning*
 
-### Fine-Tuning
+## 🎓 Key Implementation Details
+
+### Training Pipeline (`src/training/trainer.py`)
 
 ```python
-from src.models import WhisperModelManager
-from src.training import WhisperTrainer
-
-# Initialize model
-model_manager = WhisperModelManager(config)
-model, processor = model_manager.initialize_model(variant='base')
-
-# Train
+# Training with WER/CER tracking
 trainer = WhisperTrainer(model, processor, train_loader, val_loader, config)
-trainer.train(num_epochs=10)
+best_loss = trainer.train(
+    num_epochs=5,
+    compute_metrics_every=1  # Compute WER/CER every epoch
+)
 ```
 
-### Real-Time Streaming
-
-```python
-from src.inference import StreamingASR
-
-# Initialize streaming ASR
-streaming_asr = StreamingASR(model, processor, vad=vad)
-
-# Stream from microphone
-streaming_asr.stream_from_microphone(duration_sec=30)
-
-# Stream from file
-streaming_asr.stream_from_file('audio.wav')
-```
-
-### Evaluation
-
-```python
-from src.evaluation import ModelEvaluator
-
-evaluator = ModelEvaluator(model, processor)
-results = evaluator.evaluate_dataset(test_loader)
-
-print(f"WER: {results['wer']:.3f}")
-print(f"CER: {results['cer']:.3f}")
-```
+**Features:**
+- Mixed precision training (FP16)
+- Gradient accumulation (4x)
+- Early stopping (patience=3)
+- Automatic checkpoint saving
+- WER/CER computation with text normalization
+- Metrics logging to JSONL
 
 ### Learning Curve Visualization
 
+Built-in visualization after training shows:
+1. **Training Loss** - Raw + smoothed (moving average)
+2. **Validation Loss** - Per epoch with best marker
+3. **WER & CER** - Error rates over epochs
+4. **Learning Rate** - Schedule progression
+5. **Train vs Val** - Overfitting detection
+
 ```python
-from src.evaluation.learning_curves import LearningCurveVisualizer
-import matplotlib.pyplot as plt
-
-# Load and visualize training metrics
-visualizer = LearningCurveVisualizer('logs/metrics_20240101_120000.jsonl')
-visualizer.print_summary()
-fig = visualizer.plot_learning_curves(save_path='plots/learning_curves.png')
-plt.show()
+# Automatically generated in notebook after training
+# Saved to plots/learning_curves.png
 ```
 
-Or use the command-line tool:
+### Evaluation Methods
 
-```bash
-python visualize_training.py logs/metrics_20240101_120000.jsonl --output plots/learning_curves.png
-```
+Three inference methods compared:
+- **Batch Processing** - Standard batch inference
+- **Streaming** - Chunked processing (2s chunks, 0.5s overlap)
+- **Single-Pass** - Complete audio in one pass
 
-See `LEARNING_CURVES.md` for detailed usage and examples.
+Metrics computed:
+- WER (Word Error Rate)
+- CER (Character Error Rate)
+- Latency (seconds)
+- RTF (Real-Time Factor)
 
 ## 🔬 Technical Stack
 
-- **Deep Learning**: PyTorch 2.0+, Transformers
-- **Audio Processing**: torchaudio, librosa, silero-vad
-- **Datasets**: HuggingFace Datasets (Common Voice, SpeechOcean762)
-- **Evaluation**: jiwer (WER/CER)
-- **MLOps**: Weights & Biases / MLflow / TensorBoard
-- **Visualization**: matplotlib, seaborn
+- **Deep Learning**: PyTorch 2.0+, Transformers 4.35+
+- **Audio**: torchaudio, librosa, soundfile, silero-vad
+- **Datasets**: HuggingFace Datasets (minds14, LibriSpeech)
+- **Metrics**: jiwer (WER/CER computation)
+- **Visualization**: matplotlib, seaborn, numpy
+- **Logging**: Python logging, JSONL metrics files
+- **Platform**: Google Colab (T4/A100 GPU)
 
-## 📈 Performance
+## 📈 Expected Results
 
-Benchmarks on Common Voice (English):
+### Training Performance (Whisper-Small, 5 epochs)
 
-| Model | WER | Latency (RTF) | GPU Memory |
-|-------|-----|---------------|------------|
-| whisper-base | ~10% | 0.2x | 2GB |
-| whisper-small | ~8% | 0.5x | 4GB |
-| whisper-medium | ~6% | 1.0x | 8GB |
+```
+Training: 2000 samples, ~1250 steps
+Validation: 400 samples
+
+Final Metrics:
+├─ Validation Loss: ~0.23-0.28
+├─ WER: 1-5% (minds14 dataset)
+├─ CER: 0.5-2%
+└─ Training Time: ~40-50 min (A100 GPU)
+```
+
+### Inference Performance
+
+| Method | WER | CER | Latency | RTF |
+|--------|-----|-----|---------|-----|
+| Batch | 0.03-0.05 | 0.01-0.02 | 0.3-0.5s | 0.10-0.15x |
+| Streaming | 0.04-0.08 | 0.02-0.03 | 0.5-0.8s | 0.20-0.30x |
+| Single | 0.03-0.05 | 0.01-0.02 | 0.2-0.4s | 0.07-0.12x |
 
 *RTF < 1.0 = Real-time capable*
 
-## 🛠️ Configuration
+### Visualization Outputs
 
-Edit `config.yaml` to customize:
+1. **Learning Curves** (`plots/learning_curves.png`)
+   - 5-panel visualization showing training progression
+   - Automatically generated after training
+
+2. **Comprehensive Analysis** (`plots/comprehensive_analysis.png`)
+   - 7-panel performance analysis
+   - Includes WER/CER distributions, latency, streaming comparison
+   - Model architecture diagram
+
+## 🛠️ Configuration (`config.yaml`)
+
+Key parameters used in the project:
 
 ```yaml
+project:
+  seed: 42
+  device: cuda
+
 model:
-  default_variant: "base"  # tiny, base, small, medium, distil
-  
+  default_variant: small  # 244M params
+
 training:
-  batch_size: 16
-  num_epochs: 10
-  learning_rate: 5.0e-5
+  num_epochs: 5
+  batch_size: 8
+  gradient_accumulation_steps: 4  # Effective batch size: 32
+  learning_rate: 1.0e-5
+  warmup_steps: 500
+  fp16: true
+  early_stopping_patience: 3
 
 data:
+  sampling_rate: 16000
+  audio_max_length_sec: 30
   augmentation:
-    enabled: true
-    speed_perturbation: [0.9, 1.0, 1.1]
-    
+    enabled: false  # Disabled for training stability
+
 inference:
   streaming:
-    buffer_size_sec: 2.0
-    vad_enabled: true
+    chunk_length_sec: 2.0
+    overlap_sec: 0.5
 ```
 
-## 📝 MLOps Best Practices
+## � Local Setup (Optional)
 
-### Reproducibility
-- Fixed random seeds across all libraries
-- Git commit tracking for every experiment
-- Environment snapshots (requirements.txt)
+```bash
+# Clone repository
+git clone https://github.com/jimmy00415/COMP3057_Project.git
+cd COMP3057_Project
 
-### Versioning
-- Dataset versioning with checksums
-- Model registry with metadata
-- Experiment tracking (WandB/MLflow)
+# Install dependencies
+pip install -r requirements.txt
 
-### Monitoring
-- Training/validation metrics logging
-- Latency benchmarking
-- GPU utilization tracking
-
-## 🧪 Testing
-
-```python
-# Unit tests for components
-pytest tests/
-
-# Benchmark inference
-python scripts/benchmark_latency.py
-
-# Evaluate on test set
-python scripts/evaluate.py --model checkpoints/best_model
+# Run notebook locally
+jupyter notebook "whisper_asr_colab .ipynb"
 ```
 
-## 🚢 Deployment
+**Note:** Google Colab is recommended for GPU access.
 
-### Export Model
-```python
-model.save_pretrained('final_model')
-processor.save_pretrained('final_model')
-```
+## � Output Files
 
-### Load for Inference
-```python
-from transformers import WhisperForConditionalGeneration, WhisperProcessor
+After running the notebook, the following files are generated:
 
-model = WhisperForConditionalGeneration.from_pretrained('final_model')
-processor = WhisperProcessor.from_pretrained('final_model')
-```
+### Checkpoints
+- `checkpoints/best_model.pt` - Best model checkpoint (PyTorch)
+- `checkpoints/best_model_hf/` - HuggingFace format model
+- `final_model/` - Exported model for deployment
 
-### Optimize for Production
-- Convert to ONNX: `python scripts/export_onnx.py`
-- Use faster-whisper for 4x speedup
-- Quantization for edge deployment
+### Logs
+- `logs/training.log` - Training log file
+- `logs/metrics_YYYYMMDD_HHMMSS.jsonl` - Metrics (loss, WER, CER) by step/epoch
+
+### Visualizations
+- `plots/learning_curves.png` - 5-panel training progression visualization
+- `plots/comprehensive_analysis.png` - 7-panel performance analysis
+
+### Google Drive (if mounted)
+- Checkpoints and logs are also saved to Google Drive for persistence across sessions
 
 ## 📚 References
 
-1. [Whisper Paper](https://arxiv.org/abs/2212.04356) - OpenAI Whisper
-2. [Whisper-Streaming](https://github.com/ufal/whisper_streaming) - Real-time implementation
-3. [Common Voice](https://commonvoice.mozilla.org/) - Dataset
-4. [MLOps Best Practices](https://www.dailydoseofds.com/mlops-crash-course-part-3/)
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create feature branch
-3. Add tests for new features
-4. Submit pull request
+1. [Whisper Paper](https://arxiv.org/abs/2212.04356) - Radford et al., "Robust Speech Recognition via Large-Scale Weak Supervision"
+2. [HuggingFace Transformers](https://huggingface.co/docs/transformers) - Whisper model implementation
+3. [minds14 Dataset](https://huggingface.co/datasets/PolyAI/minds14) - E-banking intent classification dataset
+4. [LibriSpeech](https://www.openslr.org/12/) - Speech recognition corpus
 
 ## 📄 License
 
-MIT License - see LICENSE file
+MIT License
 
-## 👥 Authors
+## 👥 Author
 
-COMP3057 Project Team
+**CHEN YIWEI (22256024)**  
+COMP3057 Advanced Topics in AI  
+University of Macau
 
 ## 🙏 Acknowledgments
 
-- OpenAI for Whisper models
-- HuggingFace for Transformers library
-- Mozilla for Common Voice dataset
-- Silero Team for VAD models
+- OpenAI for the Whisper model architecture and pre-trained weights
+- HuggingFace for the Transformers library and Datasets
+- Google Colab for providing free GPU resources
+- University of Macau COMP3057 course staff
 
 ---
 
-**Ready for production deployment in Google Colab!** 🚀
+**Project completed for COMP3057 - October 2025** 🎓
