@@ -1,4 +1,4 @@
-# Real-Time Multilingual ASR with Whisper
+# Real-Time English ASR with Whisper
 
 **Author:** CHEN YIWEI (22256024)  
 **Course:** COMP3057 Advanced Topics in AI  
