@@ -887,7 +887,7 @@ MIT License - see LICENSE file
 
 ## 👥 Authors
 
-COMP3057 Project Team
+CHEN YIWEI Jimmy 22256024
 
 ## 🙏 Acknowledgments
 
