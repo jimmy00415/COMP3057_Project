@@ -573,9 +573,9 @@ SOFTWARE.
 Student ID: 22256024  
 Hong Kong Baptist University  
 Department of Computer Science  
-Course: COMP3057 - Advanced Topics in Machine Learning
+Course: COMP3057 - Introduction to Artificial Intelligence 
 
-📧 Email: [your_email@hkbu.edu.hk]  
+📧 Email: [22256024@life.hkbu.edu.hk]  
 🔗 GitHub: [https://github.com/jimmy00415](https://github.com/jimmy00415)
 
 ---
