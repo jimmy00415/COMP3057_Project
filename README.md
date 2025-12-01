@@ -3,7 +3,7 @@
 **COMP3057 Course Project**  
 **Author:** CHEN YIWEI (Student ID: 22256024)  
 **Institution:** Hong Kong Baptist University, Department of Computer Science  
-**Course:** Advanced Topics in Machine Learning  
+* 
 
 A production-ready automatic speech recognition (ASR) system built on OpenAI's Whisper, featuring real-time streaming inference, comprehensive training pipeline, and advanced evaluation metrics.
 
